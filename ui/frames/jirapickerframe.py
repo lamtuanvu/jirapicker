@@ -7,6 +7,7 @@ from ui.widgets import FlexTextCtrl
 from ui.widgets import MyPopupMenu
 from core.third_party_interaction import MySQLHandler
 from core.third_party_interaction import JiraHandler
+from icons.iconsets import *
 
 class JiraPickerFrame(wx.Frame):
     def __init__(self, *args, **kwds):
@@ -17,6 +18,8 @@ class JiraPickerFrame(wx.Frame):
         self.SetTitle("Jira Picker")
         self.SetBackgroundColour(
             wx.SystemSettings.GetColour(wx.SYS_COLOUR_MENUBAR))
+        
+        self.SetIcon(jira_32px.GetIcon())
 
         self.mysql = MySQLHandler()
         self.myjira = JiraHandler()
