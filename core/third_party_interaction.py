@@ -47,6 +47,7 @@ class JiraHandler(JIRA):
         Arguments:
             query {[string]} -- [JQL statement]
         """
+        issues = None
         try:
             issues = self.search_issues(query)
         except JIRAError as err:
@@ -54,11 +55,17 @@ class JiraHandler(JIRA):
             return None
         return issues
     
-    
-        """issue_keys = []
-        for issue in issues:
-            issue_keys.append(issue.key)
-        return issue_keys"""
+    def check_valid_statement(self, query):
+        """[summary] Check validity of JQL statement
+        
+        Arguments:
+            query {[type]} -- [description]
+        """
+        try:
+            self.search_issues(query)
+        except JIRAError as err:
+            return err.text
+        return None
 
     def get_issue_dicts(self, query):
         """[summary] Get the list of issues as dictionary format
@@ -125,7 +132,7 @@ class MySQLHandler:
         print("Executed command:, ", cmd)
         self.cursor.execute(cmd, tuple(values))
         self.cnx.commit()
-        
+
     def get_data_by_fields(self, table="ticket", fields=[]):
         fields_string = ', '.join(['`%s`']*len(fields)) % tuple(fields)
         cmd = """SELECT %s FROM `%s`""" % (fields_string, table)
@@ -133,16 +140,14 @@ class MySQLHandler:
         return self.cursor.fetchall()
 
 
-"""
 class MyOutlookHandler:
-    # Drafting and sending email notification to senders. You can add other senders' email in the list
-    def __init__(self, to, legatoStatus, atStatus):
+    def __init__(self):
         outlook = win32.Dispatch('outlook.application')
         mail = outlook.CreateItem(win32.constants.olTaskItem)
         mail.To = 'To address'
         mail.Subject = 'Message subject'
         mail.Body = 'Message body'
-        mail.HTMLBody = '<h2>HTML Message body</h2>' #this field is optional
+        mail.HTMLBody = '<h2>HTML Message body</h2>'
 
         # To attach a file to the email (optional):
         attachment  = "Path to the attachment"
@@ -167,56 +172,3 @@ class MyOutlookHandler:
                       "\\Microsoft Office\\Office16\\Outlook.exe")
         except errorcode:
             print ("Outlook didn't open successfully")
-
-    def check_legato_mail(self, legatoFolders):
-        folder = win32.Dispatch("Outlook.Application").GetNamespace("MAPI")
-
-        legatoFolders = legatoFolders.split("\\")
-        for legatoFolder in legatoFolders:
-            folder = folder.Folders(legatoFolder)
-
-        msgs = folder.Items
-        toSend=[]
-        for msg in msgs:
-            if msg.unread:
-                toSend.append(msg)
-
-        answer = wx.MessageBox("There are %d message will be sent to %s.?. Do you want to process it? yes/no: " %(len(toSend), self.to), 'Confirmation', wx.YES_NO)
-        if answer == wx.YES:
-            for msg in toSend:
-                msg.unread=False
-                self.foward_email(msg)
-
-        else:
-            print "\nNothing will be sent"
-
-    def check_AT_mail(self, atFolders):
-        folder = win32.Dispatch("Outlook.Application").GetNamespace("MAPI")
-        try:
-            atFolders = atFolders.split("\\")
-            for atFolder in atFolders:
-                folder = folder.Folders(atFolder)
-
-            msgs = folder.Items
-            toSend=[]
-            for msg in msgs:
-                if msg.unread:
-                    if msg.Attachments.Count != 0:
-                        toSend.append(msg)
-                    elif msg.Attachments.Count == 0:
-                        print "Test case %s doesn't have attachment"
-                        answer = wx.MessageBox("Test case %s doesn't have attachment. Do you want to send it anyway" %(msg.Subject), 'Confirmation', wx.YES_NO)
-                        if answer == wx.YES:
-                            toSend.append(msg)
-
-            answer = wx.MessageBox("There are %d message will be sent to %s?. Do you want to process it? yes/no: " %(len(toSend), self.to), 'Confirmation', wx.YES_NO)
-            if answer == wx.YES:
-                for msg in toSend:
-                    msg.unread=False
-                    self.foward_email(msg)
-
-            else:
-                print "\nNothing will be sent"
-        except:
-            print "Failed to sent"
-"""

@@ -9,6 +9,7 @@ from core.third_party_interaction import MySQLHandler
 from core.third_party_interaction import JiraHandler
 from icons.iconsets import *
 
+
 class JiraPickerFrame(wx.Frame):
     def __init__(self, *args, **kwds):
         # begin wxGlade: JiraPickerFrame.__init__
@@ -109,7 +110,7 @@ class JiraPickerFrame(wx.Frame):
     def on_item_selected(self, evt):
         self.item_selected_action()
         self.window_2.GetStringSelection
-        
+
     def item_selected_action(self):
         selected_item = self.window_2.GetStringSelection()
         query_statement = self.statement_items[selected_item]
@@ -122,22 +123,26 @@ class JiraPickerFrame(wx.Frame):
     def save_action(self):
         values = []
         statement = self.flex_txt_jql_statement.txt_int.GetValue()
-        name = None
-        dlg = AddDialog(self)
-        if dlg.ShowModal() == wx.ID_OK:
-            name = dlg.txt_name.GetValue()
-            values.append(name)
-            values.append(statement)
-            self.mysql.write_to_database(table='jql_statement',
-                                         fields=['name', 'detail'],
-                                         values=values)
-            self.refresh_action()
+        result = self.myjira.check_valid_statement(statement)
+        if result:
+            wx.MessageBox(result, 'Jira Error', wx.OK | wx.ICON_ERROR)
         else:
-            self.refresh_action()
+            name = None
+            dlg = AddDialog(self)
+            if dlg.ShowModal() == wx.ID_OK:
+                name = dlg.txt_name.GetValue()
+                values.append(name)
+                values.append(statement)
+                self.mysql.write_to_database(table='jql_statement',
+                                             fields=['name', 'detail'],
+                                             values=values)
+                self.refresh_action()
+            else:
+                self.refresh_action()
 
     def refresh_action(self):
         filters = self.mysql.get_data_by_fields(table='jql_statement',
-                                      fields=['name', 'detail'])
+                                                fields=['name', 'detail'])
         names = []
         for filter in filters:
             names.append(filter[0])
