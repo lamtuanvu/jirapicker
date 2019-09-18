@@ -4,7 +4,7 @@ import sys
 
 from ui.widgets import MyUltimateListCtrl
 from ui.widgets import FlexTextCtrl
-
+from core.third_party_interaction import MySQLHandler
 
 class JiraPickerFrame(wx.Frame):
     def __init__(self, *args, **kwds):
@@ -16,6 +16,8 @@ class JiraPickerFrame(wx.Frame):
         self.SetBackgroundColour(
             wx.SystemSettings.GetColour(wx.SYS_COLOUR_MENUBAR))
 
+        self.mysql = MySQLHandler()
+        self.statement_items = {}
         vbox_main = wx.BoxSizer(wx.VERTICAL)
 
         main_w, main_h = self.GetSize()
@@ -30,7 +32,9 @@ class JiraPickerFrame(wx.Frame):
         hbox_top.Add(static_text_1, 0, wx.ALIGN_CENTER | wx.LEFT | wx.RIGHT, 5)
 
         # self.txt_jql_statment = wx.TextCtrl(self.pn_top, wx.NewIdRef(), "")
-        self.flex_txt_jql_statement = FlexTextCtrl(self, hint="Enter your statement", password=False)
+        self.flex_txt_jql_statement = FlexTextCtrl(self.pn_top, 
+                                                   hint="Enter your statement",
+                                                   password=False)
         hbox_top.Add(self.flex_txt_jql_statement, 1, wx.ALIGN_CENTER, 5)
 
         self.btn_search = wx.Button(self.pn_top, wx.NewIdRef(), "Search")
@@ -52,7 +56,8 @@ class JiraPickerFrame(wx.Frame):
         hbox_filter = wx.StaticBoxSizer(wx.StaticBox(
             self.pn_left, wx.NewIdRef(), "Filters"), wx.HORIZONTAL)
 
-        self.window_2 = FilterUltimateListCtrl(self.pn_left)
+        self.window_2 = wx.ListBox(self.pn_left)
+        # self.window_2 = FilterUltimateListCtrl(self.pn_left)
         hbox_filter.Add(self.window_2, 1, wx.EXPAND, 0)
 
         self.pn_right = wx.Panel(self, wx.NewIdRef())
@@ -63,12 +68,12 @@ class JiraPickerFrame(wx.Frame):
 
         self.nb_result = wx.Notebook(self.pn_right, wx.NewIdRef())
         hbox_result.Add(self.nb_result, 1, wx.EXPAND, 0)
+        
+        self.pn_top.SetSizer(hbox_top)
 
         self.pn_right.SetSizer(hbox_result)
 
         self.pn_left.SetSizer(hbox_filter)
-
-        self.pn_top.SetSizer(hbox_top)
 
         self.SetSizer(vbox_main)
 
@@ -76,8 +81,11 @@ class JiraPickerFrame(wx.Frame):
         self.Center(wx.BOTH)
         # end wxGlade
 
-        self.flex_txt_jql_statement.txt_int.Bind(wx.EVT_TEXT_ENTER, self.on_enter_pressed)
+        self.flex_txt_jql_statement.txt_int.Bind(wx.EVT_TEXT_ENTER,
+                                                 self.on_enter_pressed)
         self.Bind(wx.EVT_BUTTON, self.on_button_pressed)
+        self.btn_search.SetFocus()
+        self.window_2.Bind(wx.EVT_LISTBOX, self.on_item_selected)
 
     def on_enter_pressed(self, evt):
         eid = evt.GetEventObject().GetId()
@@ -88,7 +96,46 @@ class JiraPickerFrame(wx.Frame):
         eid = evt.GetEventObject().GetId()
         if eid == self.btn_search.GetId():
             self.search_action()
+        elif eid == self.btn_save_change.GetId():
+            self.save_action()
 
+    def on_item_selected(self, evt):
+        self.item_selected_action()
+        self.window_2.GetStringSelection
+        
+    def item_selected_action(self):
+        selected_item = self.window_2.GetStringSelection()
+        if self.flex_txt_jql_statement.is_out:
+            self.flex_txt_jql_statement.toggle()
+        self.flex_txt_jql_statement.txt_int.SetValue(self.statement_items[selected_item])
+        self.search_action()
+
+    def save_action(self):
+        values = []
+        statement = self.flex_txt_jql_statement.txt_int.GetValue()
+        name = None
+        dlg = AddDialog(self)
+        if dlg.ShowModal() == wx.ID_OK:
+            name = dlg.txt_name.GetValue()
+            values.append(name)
+            values.append(statement)
+            self.mysql.write_to_database(table='jql_statement',
+                                         fields=['name', 'detail'],
+                                         values=values)
+            self.refresh_action()
+        else:
+            self.refresh_action()
+
+    def refresh_action(self):
+        filters = self.mysql.get_data_by_fields(table='jql_statement',
+                                      fields=['name', 'detail'])
+        names = []
+        for filter in filters:
+            names.append(filter[0])
+            self.statement_items[filter[0]] = filter[1]
+        self.window_2.AppendItems(names)
+        # self.window_2.Append(names[0])
+        
     def search_action(self):
         print("search")
 
@@ -124,7 +171,6 @@ class FilterUltimateListCtrl(MyUltimateListCtrl):
         evt_id = evt.GetEventObject().GetId()
         if evt_id == self.btn_add_filter.GetId():
             self.button_add_action()
-
 
     def button_add_action(self):
         dlg = AddDialog(self.btn_add_filter)
@@ -162,41 +208,46 @@ class AddDialog(wx.Dialog):
     def __init__(self, parent, tooltip="Double Click To Select Your Field"):
         wx.Dialog.__init__(self, parent, style=wx.BORDER_NONE)
         self.SetPosition(self.GetParent().GetPosition())
-        self.SetSize((600, 25))
+        self.SetSize((500, 30))
         vbox = wx.BoxSizer(wx.HORIZONTAL)
-        self.txt_statement = wx.TextCtrl(self, id=wx.NewIdRef())
+        self.lbl_detail = wx.StaticText(self, id=wx.NewIdRef(),
+                                        label="Enter Filter Name")
         self.txt_name = wx.TextCtrl(self, id=wx.NewIdRef())
-        self.btn_save = wx.Button(self, id=wx.NewIdRef(), label="Save")
-        self.btn_cancel = wx.Button(self, id=wx.NewIdRef(), label="Cancel")
+        self.btn_save = wx.Button(self, id=wx.NewIdRef(), label="OK")
+        self.btn_cancel = wx.Button(self, id=wx.ID_CANCEL, label="Cancel")
+        # self.btn_cancel.Hide()
         # self.txt_name.SetMinSize((150, -1))
-        vbox.Add(self.txt_statement, 1, wx.ALL | wx.ALIGN_CENTER | wx.EXPAND, 0)
-        vbox.Add(self.txt_name, 0, wx.ALL | wx.ALIGN_CENTER | wx.EXPAND, 0)
-        vbox.Add(self.btn_cancel, 0, wx.ALL | wx.ALIGN_CENTER | wx.EXPAND, 0)
-        vbox.Add(self.btn_save, 0, wx.ALL | wx.ALIGN_CENTER | wx.EXPAND, 0)
+        vbox.Add(self.lbl_detail, 0, wx.ALL | wx.ALIGN_CENTER, 5)
+        vbox.Add(self.txt_name, 1, wx.ALL | wx.ALIGN_CENTER, 5)
+        vbox.Add(self.btn_cancel, 0, wx.ALL | wx.ALIGN_CENTER, 0)
+        vbox.Add(self.btn_save, 0, wx.ALL | wx.ALIGN_CENTER, 5)
 
         self.filter_name = None
-        self.filter_statement = None
+        # self.filter_statement = None
         self.SetSizer(vbox)
         # vbox.Fit(self)
-        self.Center(wx.BOTH)
+        self.Center(wx.LEFT)
         self.Layout()
         self.Bind(wx.EVT_BUTTON, self.on_button_pressed)
-
+        # self.Bind(wx.EVT_KEY_DOWN, self.on_key_pressed)
+        self.btn_cancel.SetFocus()
+        self.SetFocus()
         # self.Bind(wx.EVT_LISTBOX_DCLICK, self.on_item_clicked, self.lstb_fields)
 
     def on_button_pressed(self, evt):
         e_id = evt.GetEventObject().GetId()
-        if e_id == self.btn_cancel.GetId():
-            self.button_cancel_action()
-        elif e_id == self.btn_save.GetId():
+        if e_id == self.btn_save.GetId():
             self.filter_name = self.txt_name.GetValue()
-            self.filter_statement = self.txt_statement.GetValue()
+            # self.filter_statement = self.txt_statement.GetValue()
             self.EndModal(wx.ID_OK)
+        elif e_id == wx.ID_CANCEL:
+            self.button_cancel_action()
 
     def button_cancel_action(self):
-        self.EndModal(wx.ID_CANCEL)
+        # self.EndModal(wx.ID_CANCEL)
         self.Destroy()
-        
+
+    
 class MyApp(wx.App):
     def OnInit(self):
         self.jirapickerframe = JiraPickerFrame(None, wx.ID_ANY, "")

@@ -67,8 +67,8 @@ class JiraHandler(JIRA):
 
 
 class MySQLHandler:
-    def __init__(self, user='jirapicker', password='12345678x@X',
-                 host='192.168.86.151', database='testpicker'):
+    def __init__(self, user='testpicker', password='12345678x@X',
+                 host='192.168.86.151', database='jirapicker'):
         try:
             self.cnx = mysql.connector.connect(user=user, password=password,
                                                host=host,
@@ -82,7 +82,31 @@ class MySQLHandler:
                 print(err)
         self.cursor = self.cnx.cursor()
 
+    def write_to_database(self, table="tickets", fields=[], values=[]):
+        fields_string = ', '.join(['`%s`']*len(fields)) % tuple(fields)
+        values_string = ', '.join(['%s']*len(values))
+        command = """INSERT INTO `tickets`(`ticket id`, `type`, `title`,
+                     `reporter`, `created_date`)
+                     VALUES ([value-1],[value-2],[value-3],[value-4],[value-5])
+                  """
+        if len(fields) != len(values):
+            print("Length of values and fields does not match")
 
+        cmd = """INSERT INTO `%s`(%s)
+                 VALUES (%s)""" % (table, fields_string, values_string)
+
+        print("Executed command:, ", cmd)
+        self.cursor.execute(cmd, tuple(values))
+        self.cnx.commit()
+        
+    def get_data_by_fields(self, table="ticket", fields=[]):
+        fields_string = ', '.join(['`%s`']*len(fields)) % tuple(fields)
+        cmd = """SELECT %s FROM `%s`""" % (fields_string, table)
+        self.cursor.execute(cmd)
+        return self.cursor.fetchall()
+
+
+"""
 class MyOutlookHandler:
     # Drafting and sending email notification to senders. You can add other senders' email in the list
     def __init__(self, to, legatoStatus, atStatus):
@@ -168,3 +192,4 @@ class MyOutlookHandler:
                 print "\nNothing will be sent"
         except:
             print "Failed to sent"
+"""

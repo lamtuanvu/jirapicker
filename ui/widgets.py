@@ -8,6 +8,7 @@ wx.UltimateListCtrl customization
 Sources: N/A
 """
 import wx
+import re
 
 from wx.lib.agw import ultimatelistctrl as ULC
 
@@ -53,23 +54,24 @@ class MyTextCtrl(wx.TextCtrl):
         kwargs['style'] = kwargs.get('style', 0) | wx.TE_PROCESS_ENTER
         if self.is_password:
             kwargs['style'] = kwargs.get('style', 0) | wx.TE_PASSWORD
-        super(MyTextCtrl, self).__init__(parent, wx.NewIdRef(), *args, **kwargs)
+        super(MyTextCtrl, self).__init__(
+            parent, wx.NewIdRef(), *args, **kwargs)
         if hint:
             self.SetForegroundColour(COLOR_HIDE)
             self.SetValue(hint)
 
-        self.Bind(wx.EVT_TEXT, self.on_text_change)
-        self.Bind(wx.EVT_SET_FOCUS, self.on_text_focus)
-        self.Bind(wx.EVT_TEXT_ENTER, self.on_text_enter)
+        # self.Bind(wx.EVT_TEXT, self.on_text_change)
+        # self.Bind(wx.EVT_SET_FOCUS, self.on_text_focus)
+        # self.Bind(wx.EVT_TEXT_ENTER, self.on_text_enter)
 
-    def on_text_change(self, evt):
-        pass
+    # def on_text_change(self, evt):
+    #     pass
 
-    def on_text_focus(self, evt):
-        pass
+    # def on_text_focus(self, evt):
+    #     pass
 
-    def on_text_enter(self, evt):
-        pass
+    # def on_text_enter(self, evt):
+    #     pass
 
 
 class FlexTextCtrl(wx.Panel):
@@ -89,8 +91,9 @@ class FlexTextCtrl(wx.Panel):
             kwargs.pop('password')
         super(FlexTextCtrl, self).__init__(*args, **kwargs)
 
-        self.is_spec = True
-        self.is_normal = False
+        self.is_out = True
+        self.hint = hint
+        self.input = None
 
         self.vbox = wx.BoxSizer(wx.VERTICAL)
         if password:
@@ -100,23 +103,28 @@ class FlexTextCtrl(wx.Panel):
             self.txt_out = MyTextCtrl(self, hint=hint, password=False)
             self.txt_int = MyTextCtrl(self, hint=None, password=False)
         self.vbox.Add(self.txt_int, 1, wx.EXPAND, 0)
+        # self.txt_int.Disable()
         self.txt_int.Hide()
         self.vbox.Add(self.txt_out, 1, wx.EXPAND, 0)
         self.vbox.Layout()
         self.SetSizer(self.vbox)
         self.Layout()
+        # self.txt_out.SetFocus()
 
         self.txt_int.Bind(wx.EVT_TEXT, self.on_text_change)
-        self.txt_out.Bind(wx.EVT_SET_FOCUS, self.on_text_change)
+        self.txt_out.Bind(wx.EVT_TEXT, self.on_text_change)
+        # self.txt_out.SetFocus()
+        # self.txt_out.SetFocusFromKbd()
 
     def on_text_change(self, evt):
         eid = evt.GetEventObject().GetId()
         if eid == self.txt_int.GetId():
             if self.txt_int.GetValue() == "":
-                self.is_normal = True
+                # self.is_out = True
                 self.toggle()
         else:
-            self.is_spec = True
+            self.input = self.txt_out.GetValue()
+            # self.is_out = False
             self.toggle()
 
     def toggle(self):
@@ -124,20 +132,27 @@ class FlexTextCtrl(wx.Panel):
         Toggle change text ctrl
         :return: None
         """
-        if self.is_spec:
+        if self.is_out:
             self.txt_out.Hide()
-            # self.txt_int.SetValue(self.txt_out.GetValue())
             self.txt_int.Show()
-            self.is_spec = False
-            self.is_normal = True
-            self.vbox.Layout()
+            # self.vbox.Layout()
             self.Layout()
+            if self.input:
+                pattern = self.hint + "(.*)"
+                self.input = ''.join(re.findall(pattern, self.input))
+                self.txt_int.AppendText(self.input)
+            self.is_out = False
             self.txt_int.SetFocus()
-        elif self.is_normal:
-            self.txt_out.Show()
-            self.txt_int.Hide()
-            self.is_normal = False
-            self.is_spec = True
-            self.vbox.Layout()
-            self.Layout()
 
+        else:
+            self.txt_int.Hide()
+            self.txt_out.SetValue(self.hint)
+            self.txt_out.Show()
+            self.is_out = True
+            # self.vbox.Layout()
+            self.Layout()
+            # self.txt_out.SetFocus()
+            
+    def txt_activation(self):
+        if self.is_out:
+            self.toggle()
