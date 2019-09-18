@@ -31,6 +31,8 @@ class JiraHandler(JIRA):
                 user = value
             elif key == "server":
                 server = value
+        if not server:
+            server = 'https://jira.atlassian.com'
         if user and password:
             basic_auth = (user, password)
         try:
@@ -45,7 +47,32 @@ class JiraHandler(JIRA):
         Arguments:
             query {[string]} -- [JQL statement]
         """
-        return self.search_issues(query)
+        try:
+            issues = self.search_issues(query)
+        except JIRAError as err:
+            print(err.text)
+            return None
+        return issues
+    
+    
+        """issue_keys = []
+        for issue in issues:
+            issue_keys.append(issue.key)
+        return issue_keys"""
+
+    def get_issue_dicts(self, query):
+        """[summary] Get the list of issues as dictionary format
+        
+        Arguments:
+            query {[string]} -- [description]
+        Return: dictionary for list of issues
+        """
+        issues = self.query_issues(query)
+        issue_dict_list = []
+        if issues:
+            for issue in issues:
+                issue_dict_list.append(self.parser_issue_info(issue))
+        return issue_dict_list
 
     @staticmethod
     def parser_issue_info(issue):

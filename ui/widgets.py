@@ -25,17 +25,27 @@ class MyUltimateListCtrl(ULC.UltimateListCtrl):
                  ULC.ULC_HAS_VARIABLE_ROW_HEIGHT,
                  validator=wx.DefaultValidator, name='UltimateListCtrl',
                  **kwargs):
+        based_columns = []
+        print (kwargs)
+        for k, v in kwargs.items():
+            print(k, v)
+            if k == 'based_columns':
+                based_columns = v
+        if based_columns:
+            kwargs.pop('based_columns')
+        else:
+            based_columns = ["First Column"]
         ULC.UltimateListCtrl.__init__(self, parent, id=id, pos=pos,
                                       size=size, style=style,
                                       agwStyle=agwStyle,
                                       validator=validator,
                                       name=name)
-        self.configure_list_control()
-        self.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self.on_item_right_click)
+        self.configure_list_control(based_columns)
+        self.Bind(wx.EVT_RIGHT_DOWN, self.on_item_right_click)
         self.Bind(wx.EVT_CHAR, self.on_key_pressed)
         self.Bind(wx.EVT_BUTTON, self.on_button_pressed)
 
-    def configure_list_control(self):
+    def configure_list_control(self, columns):
         pass
 
     def on_button_pressed(sefl, evt):
@@ -47,7 +57,10 @@ class MyUltimateListCtrl(ULC.UltimateListCtrl):
     def on_key_pressed(self, evt):
         pass
 
-
+    def append_line(self, items):
+        pass
+    
+    
 class MyTextCtrl(wx.TextCtrl):
     def __init__(self, parent, hint=None, password=False, *args, **kwargs):
         self.is_password = password
@@ -156,3 +169,17 @@ class FlexTextCtrl(wx.Panel):
     def txt_activation(self):
         if self.is_out:
             self.toggle()
+
+
+class MyPopupMenu(wx.Menu):
+    def __init__(self, parent, items=['Assign']):
+        super(MyPopupMenu, self).__init__()
+
+        self.parent = parent
+        self.add = wx.MenuItem(self, wx.NewIdRef(), 'Assign')
+        self.Append(self.add)
+        self.Bind(wx.EVT_MENU, self.on_assign)
+
+    def on_assign(self, evt):
+        index = self.parent.GetFirstSelected()
+        print("Assigned item: ", index)

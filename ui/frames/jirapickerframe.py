@@ -4,7 +4,9 @@ import sys
 
 from ui.widgets import MyUltimateListCtrl
 from ui.widgets import FlexTextCtrl
+from ui.widgets import MyPopupMenu
 from core.third_party_interaction import MySQLHandler
+from core.third_party_interaction import JiraHandler
 
 class JiraPickerFrame(wx.Frame):
     def __init__(self, *args, **kwds):
@@ -17,6 +19,7 @@ class JiraPickerFrame(wx.Frame):
             wx.SystemSettings.GetColour(wx.SYS_COLOUR_MENUBAR))
 
         self.mysql = MySQLHandler()
+        self.myjira = JiraHandler()
         self.statement_items = {}
         vbox_main = wx.BoxSizer(wx.VERTICAL)
 
@@ -86,6 +89,7 @@ class JiraPickerFrame(wx.Frame):
         self.Bind(wx.EVT_BUTTON, self.on_button_pressed)
         self.btn_search.SetFocus()
         self.window_2.Bind(wx.EVT_LISTBOX, self.on_item_selected)
+        self.refresh_action()
 
     def on_enter_pressed(self, evt):
         eid = evt.GetEventObject().GetId()
@@ -105,10 +109,12 @@ class JiraPickerFrame(wx.Frame):
         
     def item_selected_action(self):
         selected_item = self.window_2.GetStringSelection()
+        query_statement = self.statement_items[selected_item]
         if self.flex_txt_jql_statement.is_out:
             self.flex_txt_jql_statement.toggle()
-        self.flex_txt_jql_statement.txt_int.SetValue(self.statement_items[selected_item])
-        self.search_action()
+        self.flex_txt_jql_statement.txt_int.SetValue(query_statement)
+        self.add_new_notebook(self.nb_result, selected_item)
+        self.search_action(query_statement)
 
     def save_action(self):
         values = []
@@ -136,18 +142,36 @@ class JiraPickerFrame(wx.Frame):
         self.window_2.AppendItems(names)
         # self.window_2.Append(names[0])
         
-    def search_action(self):
-        print("search")
+    def search_action(self, query_statement):
+        results = self.myjira.get_issue_dicts(query_statement)
+        for dict in results:
+            values = []
+            for k, v in dict.items():
+                values.append(v)
+            self.ulc_result.append_line(values)
 
     def add_new_notebook(self, parent, name):
-        nbpn_result = wx.Panel(parent, wx.NewIdRef())
-        self.nb_result.AddPage(nbpn_result, name)
-        hbox_ulc = wx.BoxSizer(wx.HORIZONTAL)
+        page_list = []
+        count = self.nb_result.GetPageCount()
+        for i in range(count):
+            page_list.append(self.nb_result.GetPageText(i))
+        if name not in page_list:
+            nbpn_result = wx.Panel(parent, wx.NewIdRef())
+            self.nb_result.AddPage(nbpn_result, name, True)
+            hbox_ulc = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.ulc_result = ResultUltimateListCtrl(nbpn_result)
-        hbox_ulc.Add(self.ulc_result, 1, wx.EXPAND, 0)
-        nbpn_result.SetSizer(hbox_ulc)
-        nbpn_result.Layout()
+            self.ulc_result = ResultUltimateListCtrl(nbpn_result,
+                                                     based_columns=['Key',
+                                                                    'Summary',
+                                                                    'Assignee',
+                                                                    'Status',
+                                                                    'Updated',
+                                                                    'Action'])
+            hbox_ulc.Add(self.ulc_result, 1, wx.EXPAND, 0)
+            nbpn_result.SetSizer(hbox_ulc)
+            nbpn_result.Layout()
+        else:
+            self.nb_result.SetSelection(page_list.index(name))
 
 
 class FilterUltimateListCtrl(MyUltimateListCtrl):
@@ -184,7 +208,7 @@ class FilterUltimateListCtrl(MyUltimateListCtrl):
         # parent = self.GetTopLevelParent()
         # parent.add_new_notebook(parent.nb_result, "hello")
 
-    def append_line(self, windows_item):
+    def append_line(self, items):
         index = self.InsertStringItem(self.index, "")
         self.index = index
         btn = wx.Button(self, wx.NewIdRef(), string)
@@ -193,15 +217,29 @@ class FilterUltimateListCtrl(MyUltimateListCtrl):
   
 
 class ResultUltimateListCtrl(MyUltimateListCtrl):
-    def __init__(self, parent):
-        super(ResultUltimateListCtrl, self).__init__(parent)
+    def __init__(self, parent, **kwargs):
+        super(ResultUltimateListCtrl, self).__init__(parent, **kwargs)
+        self.index = None
 
-    def configure_list_control(self):
-        self.InsertColumn(0, "Filters")
-        colw, colh = self.GetParent().GetSize()
-        self.SetColumnWidth(0, colw)
-        self.btn_add_line = wx.Button(self, wx.NewIdRef(), "Add Filter")
-        self.btn_add_line.SetToolTip(u"Add Field")
+    def configure_list_control(self, columns):
+        for column in reversed(columns):
+            self.InsertColumn(0, column)
+        # colw, colh = self.GetParent().GetSize()
+        self.SetColumnWidth(0, 100)
+        # self.index = self.InsertStringItem(sys.maxsize, "")
+
+    def append_line(self, items):
+        index = self.InsertStringItem(sys.maxsize, "")
+        self.index = index
+        for item in items:
+            if type(item) == str:
+                self.SetStringItem(index, items.index(item), item)
+        # btn = wx.Button(self, wx.NewIdRef(), string)
+        # self.windows_items_dict[btn.GetId()] = string
+        # self.SetItemWindow(index, 0, btn, expand=True)
+
+    def on_item_right_click(self, evt):
+        self.PopupMenu(MyPopupMenu(self), evt.GetPosition())
 
 
 class AddDialog(wx.Dialog):
