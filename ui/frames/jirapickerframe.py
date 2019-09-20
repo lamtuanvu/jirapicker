@@ -8,6 +8,7 @@ from ui.widgets import MyPopupMenu
 from core.third_party_interaction import MySQLHandler
 from core.third_party_interaction import JiraHandler
 from icons.iconsets import *
+from ui.frames.authentication import LoginFrame
 
 
 class JiraPickerFrame(wx.Frame):
@@ -75,7 +76,7 @@ class JiraPickerFrame(wx.Frame):
 
         self.nb_result = wx.Notebook(self.pn_right, wx.NewIdRef())
         hbox_result.Add(self.nb_result, 1, wx.EXPAND, 0)
-        
+
         self.pn_top.SetSizer(hbox_top)
 
         self.pn_right.SetSizer(hbox_result)
@@ -94,7 +95,14 @@ class JiraPickerFrame(wx.Frame):
         self.btn_search.SetFocus()
         self.window_2.Bind(wx.EVT_LISTBOX, self.on_item_selected)
         self.refresh_action()
-
+        
+        dlg = LoginFrame(self)
+        if dlg.ShowModal() == wx.ID_OK:
+            dlg.Destroy()
+            self.Show()
+        else:
+            pass
+            
     def on_enter_pressed(self, evt):
         eid = evt.GetEventObject().GetId()
         if eid == self.flex_txt_jql_statement.txt_int.GetId():
@@ -298,7 +306,7 @@ class MyApp(wx.App):
     def OnInit(self):
         self.jirapickerframe = JiraPickerFrame(None, wx.ID_ANY, "")
         self.SetTopWindow(self.jirapickerframe)
-        self.jirapickerframe.Show()
+        # self.jirapickerframe.Show()
         return True
 
 # end of class MyApp

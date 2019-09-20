@@ -130,13 +130,30 @@ class MySQLHandler:
                  VALUES (%s)""" % (table, fields_string, values_string)
 
         print("Executed command:, ", cmd)
-        self.cursor.execute(cmd, tuple(values))
-        self.cnx.commit()
+        try:
+            self.cursor.execute(cmd, tuple(values))
+            self.cnx.commit()
+        except mysql.connector.Error as err:
+            if err.errno == errorcode.ER_DUP_ENTRY:
+                return "Duplicated"
+            else:
+                return err.msg
+        return True
+            # return "Error happens: {}".format(err)
+        # return True
 
     def get_data_by_fields(self, table="ticket", fields=[]):
         fields_string = ', '.join(['`%s`']*len(fields)) % tuple(fields)
         cmd = """SELECT %s FROM `%s`""" % (fields_string, table)
         self.cursor.execute(cmd)
+        return self.cursor.fetchall()
+
+    def get_data_by_id(self, table="", fields=[], field="", id=""):
+        fields_string = ', '.join(['`%s`']*len(fields)) % tuple(fields)
+        cmd = """SELECT %s FROM `%s`
+                 WHERE `%s` = '%s'""" % (fields_string, table, field, id)
+        print("COMMAND: ", cmd)
+        self.cursor.execute(cmd, id)
         return self.cursor.fetchall()
 
 

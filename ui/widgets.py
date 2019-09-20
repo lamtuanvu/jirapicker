@@ -89,6 +89,12 @@ class MyTextCtrl(wx.TextCtrl):
 
 class FlexTextCtrl(wx.Panel):
     def __init__(self, *args, **kwargs):
+        """[summary] Get needed information from issue's instance
+
+        Arguments:
+            hint {str} -- [hint string]
+            password {boolen} -- [is a password text ctrl]
+        """
         hint = None
         password = None
         for k, v in kwargs.items():
@@ -125,7 +131,7 @@ class FlexTextCtrl(wx.Panel):
         # self.txt_out.SetFocus()
 
         self.txt_int.Bind(wx.EVT_TEXT, self.on_text_change)
-        self.txt_out.Bind(wx.EVT_TEXT, self.on_text_change)
+        self.txt_out.Bind(wx.EVT_SET_FOCUS, self.on_text_change)
         # self.txt_out.SetFocus()
         # self.txt_out.SetFocusFromKbd()
 
@@ -169,6 +175,9 @@ class FlexTextCtrl(wx.Panel):
     def txt_activation(self):
         if self.is_out:
             self.toggle()
+
+    def GetValue(self):
+        return self.txt_int.GetValue()
 
 
 class MyPopupMenu(wx.Menu):
