@@ -5,10 +5,13 @@ import sys
 from ui.widgets import MyUltimateListCtrl
 from ui.widgets import FlexTextCtrl
 from ui.widgets import MyPopupMenu
+from ui.frames.dialogs import AddDialog
+from ui.frames.dialogs import AssignTaskDialog
+from ui.frames.authentication import LoginFrame
 from core.third_party_interaction import MySQLHandler
 from core.third_party_interaction import JiraHandler
+from core.third_party_interaction import MyOutlookHandler
 from icons.iconsets import *
-from ui.frames.authentication import LoginFrame
 
 
 class JiraPickerFrame(wx.Frame):
@@ -23,9 +26,17 @@ class JiraPickerFrame(wx.Frame):
         
         self.SetIcon(jira_32px.GetIcon())
 
-        self.mysql = MySQLHandler()
-        self.myjira = JiraHandler()
-        self.statement_items = {}
+        # Define internal variables
+        self._mysql = MySQLHandler()
+        self._myjira = JiraHandler()
+        self._statement_items = {}
+        self._ulc_results = {}
+        self._ulc_columns = ['Key', 'Summary', 'Assignee',
+                             'Status', 'Updated', 'Action',
+                             'TMA-Assignee', 'TMA-Last Assignee']
+        self.users = []
+        self.logged_user = None
+
         vbox_main = wx.BoxSizer(wx.VERTICAL)
 
         main_w, main_h = self.GetSize()
@@ -59,8 +70,6 @@ class JiraPickerFrame(wx.Frame):
         self.pn_left.SetMinSize((200, -1))
         hbox_middle.Add(self.pn_left, 0, wx.EXPAND, 0)
 
-        # self.pn_left.SetSize((150, -1))
-
         hbox_filter = wx.StaticBoxSizer(wx.StaticBox(
             self.pn_left, wx.NewIdRef(), "Filters"), wx.HORIZONTAL)
 
@@ -87,51 +96,87 @@ class JiraPickerFrame(wx.Frame):
 
         self.Layout()
         self.Center(wx.BOTH)
-        # end wxGlade
 
+        self._bind_all()
+        self._initiate()
+
+    # Bind all event
+    def _bind_all(self):
         self.flex_txt_jql_statement.txt_int.Bind(wx.EVT_TEXT_ENTER,
                                                  self.on_enter_pressed)
         self.Bind(wx.EVT_BUTTON, self.on_button_pressed)
-        self.btn_search.SetFocus()
         self.window_2.Bind(wx.EVT_LISTBOX, self.on_item_selected)
-        self.refresh_action()
-        
+        self.flex_txt_jql_statement.txt_int.Bind(wx.EVT_TEXT,
+                                                 self.on_text_change)
+
+    def _initiate(self):
+        # Initiation with login dialog
         dlg = LoginFrame(self)
         if dlg.ShowModal() == wx.ID_OK:
+            self.logged_user = dlg.logged_user
             dlg.Destroy()
             self.Show()
         else:
-            pass
-            
+            self.Destroy()
+
+        # Button initiate States
+        self.btn_save_change.Enable(False)
+        self.btn_search.SetFocus()
+
+        # Fetch all data from database
+        self.refresh_action()
+        
+
+    def on_text_change(self, evt):
+        # Check the saved statements were changed or not
+        current_statement = self.flex_txt_jql_statement.txt_int.GetValue()
+        is_exist = False
+        for k, v in self._statement_items.items():
+            if v == current_statement:
+                is_exist = True
+        if is_exist:
+            self.btn_save_change.Enable(False)
+        else:
+            self.btn_save_change.Enable()
+
     def on_enter_pressed(self, evt):
+        # Process search when enter is pressed
         eid = evt.GetEventObject().GetId()
         if eid == self.flex_txt_jql_statement.txt_int.GetId():
-            self.search_action()
+            self.search_action(self.flex_txt_jql_statement.txt_int.GetValue(), "Search")
 
     def on_button_pressed(self, evt):
         eid = evt.GetEventObject().GetId()
         if eid == self.btn_search.GetId():
-            self.search_action()
+            """Add new notebook if not existed,
+            Process search action after that
+            """
+            self.add_new_notebook(self.nb_result, "Search")
+            self.search_action(self.flex_txt_jql_statement.txt_int.GetValue(), "Search")
         elif eid == self.btn_save_change.GetId():
             self.save_action()
 
     def on_item_selected(self, evt):
         self.item_selected_action()
-        self.window_2.GetStringSelection
+        # self.window_2.GetStringSelection
 
     def item_selected_action(self):
+        """[summary] Process the add new notebook action
+        then query data for Jira server
+        """
         selected_item = self.window_2.GetStringSelection()
-        query_statement = self.statement_items[selected_item]
+        query_statement = self._statement_items[selected_item]
         if self.flex_txt_jql_statement.is_out:
             self.flex_txt_jql_statement.toggle()
         self.flex_txt_jql_statement.txt_int.SetValue(query_statement)
         self.add_new_notebook(self.nb_result, selected_item)
-        self.search_action(query_statement)
+        self.search_action(query_statement, selected_item)
 
     def save_action(self):
+        # Save the jql statement to database
         values = []
         statement = self.flex_txt_jql_statement.txt_int.GetValue()
-        result = self.myjira.check_valid_statement(statement)
+        result = self._myjira.check_valid_statement(statement)
         if result:
             wx.MessageBox(result, 'Jira Error', wx.OK | wx.ICON_ERROR)
         else:
@@ -141,7 +186,7 @@ class JiraPickerFrame(wx.Frame):
                 name = dlg.txt_name.GetValue()
                 values.append(name)
                 values.append(statement)
-                self.mysql.write_to_database(table='jql_statement',
+                self._mysql.write_to_database(table='jql_statement',
                                              fields=['name', 'detail'],
                                              values=values)
                 self.refresh_action()
@@ -149,55 +194,121 @@ class JiraPickerFrame(wx.Frame):
                 self.refresh_action()
 
     def refresh_action(self):
-        filters = self.mysql.get_data_by_fields(table='jql_statement',
+        # Refetch all data from database
+        self._mysql.cnx.close
+        self._mysql.cursor.close
+        del self._mysql
+
+        self._mysql = MySQLHandler()
+
+        filters = self._mysql.get_data_by_fields(table='jql_statement',
                                                 fields=['name', 'detail'])
         names = []
         for filter in filters:
             names.append(filter[0])
-            self.statement_items[filter[0]] = filter[1]
+            self._statement_items[filter[0]] = filter[1]
+        self.window_2.Clear()
         self.window_2.AppendItems(names)
+        users = self._mysql.get_data_by_fields(table='user',
+                                               fields=['username',
+                                                       'first_name',
+                                                       'last_name'])
+
+        for value in users:
+            user = {}
+            user['username'] = value[0]
+            user['displayname'] = value[1] + ' ' + value[2]
+            self.users.append(user)
+
+
         # self.window_2.Append(names[0])
+
+    def search_action(self, query_statement, name):
+        """[summary] Search tickets by provided statement
         
-    def search_action(self, query_statement):
-        results = self.myjira.get_issue_dicts(query_statement)
+        Arguments:
+            query_statement {[string]} -- [JQL query statement]
+            name {[str]} -- [Name of search statement which used
+            to create notebook page]
+        """
+        ulc_result = self._ulc_results[name]
+        ulc_result.DeleteAllItems()
+        results = self._myjira.get_issue_dicts(query_statement)
         for dict in results:
             values = []
             for k, v in dict.items():
                 values.append(v)
-            self.ulc_result.append_line(values)
+            print("len values ", values)
+            self._mysql.write_to_database(table='tickets', 
+                                          fields=['ticket',
+                                                  'title',
+                                                  'assignee',
+                                                  'status',
+                                                  'updated'], values=values)
+            break
+
+        self._mysql.cnx.close()
+
+        # for k, v in self._ulc_results.items():
+            # print ("List of Items: ", v.GetItemCount())
 
     def add_new_notebook(self, parent, name):
-        page_list = []
-        count = self.nb_result.GetPageCount()
-        for i in range(count):
-            page_list.append(self.nb_result.GetPageText(i))
-        if name not in page_list:
+        """[summary] Add new page to notebook
+        Check the page name
+        then create a new page if note exist
+        Arguments:
+            parent {[wxobject]} -- [parent widget]
+            name {[str]} -- [name of page]
+        """
+        if self.check_page_exist(name) is not None:
+            self.nb_result.SetSelection(self.check_page_exist(name))
+        else:
             nbpn_result = wx.Panel(parent, wx.NewIdRef())
             self.nb_result.AddPage(nbpn_result, name, True)
             hbox_ulc = wx.BoxSizer(wx.HORIZONTAL)
 
-            self.ulc_result = ResultUltimateListCtrl(nbpn_result,
-                                                     based_columns=['Key',
-                                                                    'Summary',
-                                                                    'Assignee',
-                                                                    'Status',
-                                                                    'Updated',
-                                                                    'Action'])
-            hbox_ulc.Add(self.ulc_result, 1, wx.EXPAND, 0)
+            self._ulc_results[name] = ResultUltimateListCtrl(nbpn_result,
+                                                     based_columns=self._ulc_columns)
+            hbox_ulc.Add(self._ulc_results[name], 1, wx.EXPAND, 0)
             nbpn_result.SetSizer(hbox_ulc)
             nbpn_result.Layout()
+
+    def check_page_exist(self, page_name):
+        """[summary] Check whether the page name is exist or not
+        
+        Arguments:
+            page_name {[str]} -- [Name of the note book page]
+        
+        Returns:
+            [boolen] -- [description]
+        """
+        page_list = []
+        count = self.nb_result.GetPageCount()
+        for i in range(count):
+            page_list.append(self.nb_result.GetPageText(i))
+        if page_name in page_list:
+            page_index = page_list.index(page_name)
+            return page_index
         else:
-            self.nb_result.SetSelection(page_list.index(name))
+            return None
 
 
 class FilterUltimateListCtrl(MyUltimateListCtrl):
     def __init__(self, parent):
+        """[summary] Initiate the Ultimate List Ctrl
+        
+        Arguments:
+            MyUltimateListCtrl {[type]} -- [description]
+            parent {[type]} -- [description]
+        """
         MyUltimateListCtrl.__init__(self, parent)
         self.index = None
         self.windows_items_dict = {}
         self.statment_dict = {}
 
     def configure_list_control(self):
+        """[summary] This method is overriden from MyUltimateListCtrl
+        """
         self.InsertColumn(0, "Saved Filters")
         colw, colh = self.GetParent().GetSize()
         self.SetColumnWidth(0, 190)
@@ -225,17 +336,28 @@ class FilterUltimateListCtrl(MyUltimateListCtrl):
         # parent.add_new_notebook(parent.nb_result, "hello")
 
     def append_line(self, items):
+        """[summary] Add new line with provided items to ULC
+        
+        Arguments:
+            items {[List]} -- [List of item's value]
+        """
         index = self.InsertStringItem(self.index, "")
         self.index = index
         btn = wx.Button(self, wx.NewIdRef(), string)
         self.windows_items_dict[btn.GetId()] = string
         self.SetItemWindow(index, 0, btn, expand=True)
-  
+
+    def clear_ulc(self):
+        # for i in range(1, self.index):
+        self.DeleteAllItems()
+
 
 class ResultUltimateListCtrl(MyUltimateListCtrl):
     def __init__(self, parent, **kwargs):
         super(ResultUltimateListCtrl, self).__init__(parent, **kwargs)
-        self.index = None
+        self.__index = None
+        self._myoutlook = MyOutlookHandler()
+        self._columns = kwargs['based_columns']
 
     def configure_list_control(self, columns):
         for column in reversed(columns):
@@ -246,7 +368,7 @@ class ResultUltimateListCtrl(MyUltimateListCtrl):
 
     def append_line(self, items):
         index = self.InsertStringItem(sys.maxsize, "")
-        self.index = index
+        self.__index = index
         for item in items:
             if type(item) == str:
                 self.SetStringItem(index, items.index(item), item)
@@ -254,64 +376,44 @@ class ResultUltimateListCtrl(MyUltimateListCtrl):
         # self.windows_items_dict[btn.GetId()] = string
         # self.SetItemWindow(index, 0, btn, expand=True)
 
+    def assign_action(self):
+        index = self.GetFirstSelected()
+        users = self.GetTopLevelParent().users
+        logged_user = self.GetTopLevelParent().logged_user
+        logged_user_display = None
+        username = []
+        for user in users:
+            if user.get('username') == logged_user:
+                logged_user_display = user.get('displayname')
+            username.append(user.get('username'))
+        assignee = ''
+        items_value = []
+        
+        for i in range(len(self._columns)):
+            items = self.GetItem(index, col=i)
+            items_value.append(items.GetText())
+        subject = '[Jira Support]: ' + items_value[0] + ' - ' + items_value[1]
+        body = "Hi ,\nPlease help to support this ticket.\n\nThanks,\n{}.".format(logged_user_display)
+
+        dlg = AssignTaskDialog(self, username, subject, body)
+        if dlg.ShowModal() == wx.ID_OK:
+            # assignee = dlg.selected
+            dlg.Destroy()
+
+        print("ASsign item: ", items_value)
+
     def on_item_right_click(self, evt):
-        self.PopupMenu(MyPopupMenu(self), evt.GetPosition())
+        print(self.GetFirstSelected())
+        if self.GetFirstSelected() != -1:
+            self.PopupMenu(MyPopupMenu(self), evt.GetPosition())
 
 
-class AddDialog(wx.Dialog):
-    def __init__(self, parent, tooltip="Double Click To Select Your Field"):
-        wx.Dialog.__init__(self, parent, style=wx.BORDER_NONE)
-        self.SetPosition(self.GetParent().GetPosition())
-        self.SetSize((500, 30))
-        vbox = wx.BoxSizer(wx.HORIZONTAL)
-        self.lbl_detail = wx.StaticText(self, id=wx.NewIdRef(),
-                                        label="Enter Filter Name")
-        self.txt_name = wx.TextCtrl(self, id=wx.NewIdRef())
-        self.btn_save = wx.Button(self, id=wx.NewIdRef(), label="OK")
-        self.btn_cancel = wx.Button(self, id=wx.ID_CANCEL, label="Cancel")
-        # self.btn_cancel.Hide()
-        # self.txt_name.SetMinSize((150, -1))
-        vbox.Add(self.lbl_detail, 0, wx.ALL | wx.ALIGN_CENTER, 5)
-        vbox.Add(self.txt_name, 1, wx.ALL | wx.ALIGN_CENTER, 5)
-        vbox.Add(self.btn_cancel, 0, wx.ALL | wx.ALIGN_CENTER, 0)
-        vbox.Add(self.btn_save, 0, wx.ALL | wx.ALIGN_CENTER, 5)
-
-        self.filter_name = None
-        # self.filter_statement = None
-        self.SetSizer(vbox)
-        # vbox.Fit(self)
-        self.Center(wx.LEFT)
-        self.Layout()
-        self.Bind(wx.EVT_BUTTON, self.on_button_pressed)
-        # self.Bind(wx.EVT_KEY_DOWN, self.on_key_pressed)
-        self.btn_cancel.SetFocus()
-        self.SetFocus()
-        # self.Bind(wx.EVT_LISTBOX_DCLICK, self.on_item_clicked, self.lstb_fields)
-
-    def on_button_pressed(self, evt):
-        e_id = evt.GetEventObject().GetId()
-        if e_id == self.btn_save.GetId():
-            self.filter_name = self.txt_name.GetValue()
-            # self.filter_statement = self.txt_statement.GetValue()
-            self.EndModal(wx.ID_OK)
-        elif e_id == wx.ID_CANCEL:
-            self.button_cancel_action()
-
-    def button_cancel_action(self):
-        # self.EndModal(wx.ID_CANCEL)
-        self.Destroy()
-
-    
-class MyApp(wx.App):
-    def OnInit(self):
-        self.jirapickerframe = JiraPickerFrame(None, wx.ID_ANY, "")
-        self.SetTopWindow(self.jirapickerframe)
-        # self.jirapickerframe.Show()
-        return True
-
-# end of class MyApp
+def test():
+    app = wx.App()
+    test_object = JiraPickerFrame(None, wx.ID_ANY, "")
+    app.SetTopWindow(test_object)
+    app.MainLoop()
 
 
 if __name__ == "__main__":
-    app = MyApp(0)
-    app.MainLoop()
+    test()

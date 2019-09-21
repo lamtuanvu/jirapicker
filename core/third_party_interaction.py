@@ -11,10 +11,19 @@ import mysql.connector
 import win32com.client as win32
 import os
 import subprocess
+import datetime
 
+from datetime import date
 from mysql.connector import errorcode
+from mysql.connector import RefreshOption
 from jira import JIRA
 from jira import JIRAError
+
+TASK_SUBJECT = "{} - {}"
+TASK_BODY = "Hi {},\nPlease help to support this ticket.\n\nThanks,\n{}."
+TASK_STATUS = {"Not Started": 0, "In Progress": 1, "Completed": 2,
+               "Waiting for someone else": 3, "Deferred": 4}
+TASK_PRIORITY = {"Normal": 1, "Low": 0, "High": 2}
 
 
 class JiraHandler(JIRA):
@@ -90,19 +99,32 @@ class JiraHandler(JIRA):
         """
         results_dict = {}
         raw_info = issue.raw
-        fields = raw_info['fields']
-        results_dict["key"] = raw_info["key"]
-        results_dict["summary"] = fields["summary"]
-        results_dict["assignee"] = fields["assignee"]["displayName"]
-        results_dict["status"] = fields["status"]['name']
-        results_dict["updated"] = fields["updated"]
-
+        # fields = raw_info['fields']
+        fields = raw_info.get('fields')
+        results_dict["key"] = raw_info.get("key")
+        # results_dict["key"] = raw_info["key"]
+        results_dict["summary"] = fields.get("summary")
+        # results_dict["summary"] = fields["summary"]
+        assignee = fields.get("assignee")
+        if assignee:
+            results_dict["assignee"] = assignee.get("displayName")
+        # results_dict["assignee"] = fields["assignee"]["displayName"]
+        status = fields.get("status")
+        if status:
+            results_dict["status"] = status.get('name')
+        # results_dict["status"] = fields["status"]['name']
+        results_dict["updated"] = fields.get("updated")
+        # print("Returned from Jira Server: ", results_dict)
         return results_dict
 
 
 class MySQLHandler:
     def __init__(self, user='testpicker', password='12345678x@X',
                  host='192.168.86.151', database='jirapicker'):
+        self.user = user
+        self.password = password
+        self.host = host
+        self.database = database
         try:
             self.cnx = mysql.connector.connect(user=user, password=password,
                                                host=host,
@@ -133,10 +155,14 @@ class MySQLHandler:
         try:
             self.cursor.execute(cmd, tuple(values))
             self.cnx.commit()
+            # self.restart()
+            # self.cnx.cmd_refresh(RefreshOption.TABLES)
         except mysql.connector.Error as err:
             if err.errno == errorcode.ER_DUP_ENTRY:
+                print("Duplicated")
                 return "Duplicated"
             else:
+                print(err.msg)
                 return err.msg
         return True
             # return "Error happens: {}".format(err)
@@ -156,36 +182,37 @@ class MySQLHandler:
         self.cursor.execute(cmd, id)
         return self.cursor.fetchall()
 
+    def restart(self):
+        self.cursor.close()
+        self.cnx.close()
+        self.__init__(self.user, self.password, self.host, self.database)
+
 
 class MyOutlookHandler:
     def __init__(self):
-        outlook = win32.Dispatch('outlook.application')
-        mail = outlook.CreateItem(win32.constants.olTaskItem)
-        mail.To = 'To address'
-        mail.Subject = 'Message subject'
-        mail.Body = 'Message body'
-        mail.HTMLBody = '<h2>HTML Message body</h2>'
+        self.outlook = win32.Dispatch('outlook.application')
 
-        # To attach a file to the email (optional):
-        attachment  = "Path to the attachment"
-        mail.Attachments.Add(attachment)
+    def create_task(self, contents={}):
+        task = self.outlook.CreateItem(3)
+        assigned_task = task.Assign()
+        receipents = assigned_task.Recipients
+        receipents.Add(contents['To'])
+        assigned_task.Subject = contents['Subject']
+        assigned_task.Body = contents['Body']
+        # assigned_task.StartDate = contents['Startdate']
+        # assigned_task.DueDate = contents['Duedate']
+        # assigned_task.DueDate = contents['Duedate']
+        assigned_task.Status = TASK_STATUS.get(contents['Status'])
+        assigned_task.Importance = TASK_PRIORITY.get(contents['Priority'])
+        # assigned_task.StatusOnCompletion = contents['StatusOnCompletion']
+        # assigned_task.StatusUpdateRecipients = contents['StatusUpdateRecipients']
+        
+        return assigned_task
 
-        mail.Send()
 
-    def create_jira_task(self, receiver, contents):
-        pass
+def test():
+    MyOutlookHandler()
 
-    def foward_email(self, msg):
-        msg.To = self.to
-        msg.Cc = "lamtuanvuqs@gmail.com;lamtuanvu92@yahoo.com"
-        msg.SentOnBehalfOfName = ''
-        msg.send
 
-    def open_outlook(self):
-        try:
-            subprocess.call(['C:\\Program Files'
-                             '\\Microsoft Office\\Office16\\Outlook.exe'])
-            os.system("C:\\Program Files"
-                      "\\Microsoft Office\\Office16\\Outlook.exe")
-        except errorcode:
-            print ("Outlook didn't open successfully")
+if __name__ == "__main__":
+    test()

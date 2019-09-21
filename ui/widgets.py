@@ -26,7 +26,6 @@ class MyUltimateListCtrl(ULC.UltimateListCtrl):
                  validator=wx.DefaultValidator, name='UltimateListCtrl',
                  **kwargs):
         based_columns = []
-        print (kwargs)
         for k, v in kwargs.items():
             print(k, v)
             if k == 'based_columns':
@@ -45,6 +44,7 @@ class MyUltimateListCtrl(ULC.UltimateListCtrl):
         self.Bind(wx.EVT_CHAR, self.on_key_pressed)
         self.Bind(wx.EVT_BUTTON, self.on_button_pressed)
 
+
     def configure_list_control(self, columns):
         pass
 
@@ -59,8 +59,8 @@ class MyUltimateListCtrl(ULC.UltimateListCtrl):
 
     def append_line(self, items):
         pass
-    
-    
+
+
 class MyTextCtrl(wx.TextCtrl):
     def __init__(self, parent, hint=None, password=False, *args, **kwargs):
         self.is_password = password
@@ -190,5 +190,5 @@ class MyPopupMenu(wx.Menu):
         self.Bind(wx.EVT_MENU, self.on_assign)
 
     def on_assign(self, evt):
-        index = self.parent.GetFirstSelected()
-        print("Assigned item: ", index)
+        # possition = evt.GetPosition()
+        self.parent.assign_action()

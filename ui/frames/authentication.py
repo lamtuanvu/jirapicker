@@ -13,6 +13,7 @@ from core.authenticator_engine import verify_password
 from core.authenticator_engine import hash_password
 from ui.widgets import FlexTextCtrl
 from icons.iconsets import *
+from ui.styles import *
 
 # begin wxGlade: dependencies
 # end wxGlade
@@ -31,6 +32,10 @@ class LoginFrame(wx.Dialog):
         self.SetIcon(jira_32px.GetIcon())
 
         self.mysql = MySQLHandler()
+        self.username = None
+        self.email = None
+        self.authorize_by_pc = False
+        self.logged_user = None
 
         vbox_main = wx.BoxSizer(wx.VERTICAL)
 
@@ -91,6 +96,9 @@ class LoginFrame(wx.Dialog):
         self.btn_register.SetMinSize((-1, -1))
         vbox_main.Add(self.btn_register, 0, wx.ALL | wx.EXPAND, 5)
 
+        self.lbl_status = wx.StaticText(self, wx.NewIdRef(), "")
+        vbox_main.Add(self.lbl_status, 0, wx.ALL | wx.EXPAND, 5)
+
         self.SetSizer(vbox_main)
         vbox_main.Fit(self)
 
@@ -131,8 +139,12 @@ class LoginFrame(wx.Dialog):
         elif eid == self.btn_login.GetId():
             self.login_action()
 
+        elif eid == self.btn_login_by_pc.GetId():
+            self.login_by_pc_action()
+
     def login_action(self):
         user = self.txt_user.GetValue()
+        self.logged_user = user
         password = self.txt_password.GetValue()
         result = self.mysql.get_data_by_id(
             'user', ['password'], 'username', user)
@@ -149,14 +161,39 @@ class LoginFrame(wx.Dialog):
 
     def register_action(self):
         dlg = RegisterFrame(self)
-        dlg.ShowModal()
-        
-    def check_valid_pc(self):
-        username = os.environ["USERNAME"]
-        domain = os.environ["USERDNSDOMAIN"]
-        if domain.lower() == 'tma.com.vn':
-            print ("Your pc detected")
+        if dlg.ShowModal() == wx.ID_OK:
+            del self.mysql
+            self.mysql = MySQLHandler()
 
+    def login_by_pc_action(self):
+        self.authorize_by_pc = True
+        user = self.txt_user.GetValue()
+        self.logged_user = user
+        result = self.mysql.get_data_by_id('user', ['username'], 'username', user)
+        print ("Result username: ", result)
+        if result:
+            if user == result[0][0]:
+                self.EndModal(wx.ID_OK)
+        else:
+            if wx.MessageBox("Your username can't be found in database. Would you like to create one?",
+                            "Creation Notification", wx.ICON_QUESTION | wx.YES_NO) == wx.YES:
+                self.register_action()
+
+    def check_valid_pc(self):
+        self.username = os.environ.get("USERNAME")
+        domain = os.environ.get("USERDNSDOMAIN").lower()
+        self.email = self.username + '@' + domain
+        if domain != "tma.com.vn":
+            # wx.MessageBox("Your PC is not authorized. Please use your TMA's PC", "Authorized Error", style=wx.ICON_ERROR)
+            self.lbl_status.SetForegroundColour(COLOR_ERROR)
+            self.lbl_status.SetLabel("TMA's PC is required for PC authorization")
+            self.btn_login_by_pc.Enable(False)
+            self.Layout()
+        else:
+            self.lbl_status.SetForegroundColour(COLOR_SUCCESS)
+            self.lbl_status.SetLabel("Username: {}. Email: {}".format(self.username, self.email))
+            self.txt_user.SetValue(self.username)
+            self.Layout()
 
 class RegisterFrame(wx.Dialog):
     def __init__(self, *args, **kwds):
@@ -165,6 +202,7 @@ class RegisterFrame(wx.Dialog):
 
         self.SetTitle("Register Your Account")
         # self.SetSize(self.GetParent().GetSize())
+        parent = self.GetParent()
 
         self.mysql = MySQLHandler()
 
@@ -206,6 +244,7 @@ class RegisterFrame(wx.Dialog):
         self.txt_username = wx.TextCtrl(self, wx.NewIdRef())
         vbox_username.Add(self.txt_username, 0, wx.EXPAND, 0)
 
+
         vbox_main.Add(vbox_username, 0, wx.EXPAND | wx.ALL, 5)
 
         vbox_email = wx.BoxSizer(wx.VERTICAL)
@@ -236,11 +275,11 @@ class RegisterFrame(wx.Dialog):
         hbox_passwords.Add(vbox_password, 1, wx.EXPAND | wx.RIGHT, 5)
 
         lbl_confirm_pw = wx.StaticText(
-            self, wx.ID_ANY, label="Confirm Password", style=wx.TE_PASSWORD)
+            self, wx.ID_ANY, label="Confirm Password")
         vbox_confirm_pw.Add(lbl_confirm_pw, 0, wx.EXPAND, 0)
 
         self.txt_confirm_pw = wx.TextCtrl(self, wx.NewIdRef(),
-                                          style=wx.TE_PASSWORD)
+                                          style=wx.TE_PASSWORD | wx.TE_PROCESS_ENTER)
         vbox_confirm_pw.Add(self.txt_confirm_pw, 0, wx.EXPAND, 0)
         self.txt_confirm_pw.Enable(False)
 
@@ -261,6 +300,13 @@ class RegisterFrame(wx.Dialog):
 
         self.Bind(wx.EVT_BUTTON, self.on_button_pressed)
         self.Bind(wx.EVT_TEXT, self.on_text_change)
+        self.txt_confirm_pw.Bind(wx.EVT_TEXT_ENTER, self.on_text_enter)
+
+        if parent.authorize_by_pc:
+            self.txt_username.SetValue(parent.username)
+            self.txt_email.SetValue(parent.email)
+        else:
+            pass
 
     def on_button_pressed(self, evt):
         eid = evt.GetEventObject().GetId()
@@ -293,6 +339,12 @@ class RegisterFrame(wx.Dialog):
             else:
                 self.txt_confirm_pw.Enable(False)
 
+    def on_text_enter(self, evt):
+        if self.txt_confirm_pw.GetValue() == self.txt_password.GetValue():
+            self.register_action()
+        else:
+            wx.MessageBox("Please enter your correct password", "Confirm Password Error", style=wx.ICON_ERROR | wx.OK)
+
     def register_action(self):
         first_name = self.txt_first_name.GetValue()
         last_name = self.txt_last_name.GetValue()
@@ -308,21 +360,17 @@ class RegisterFrame(wx.Dialog):
             wx.MessageBox("User Name Is Existed", "Register Error",
                           wx.ICON_ERROR)
         self.EndModal(wx.ID_OK)
+        self.mysql.cnx.close()
         self.Destroy()
 
 
-class MyApp(wx.App):
-    def OnInit(self):
-        # self.Login = LoginFrame(None, wx.ID_ANY, "")
-        self.Login = RegisterFrame(None, wx.ID_ANY, "")
-        self.SetTopWindow(self.Login)
-        self.Login.ShowModal()
-        # self.Login.Destroy()
-        return True
-
-# end of class MyApp
+def test():
+    app = wx.App()
+    test_object = LoginFrame(None, wx.ID_ANY, "")
+    test_object.ShowModal()
+    app.SetTopWindow(test_object)
+    app.MainLoop()
 
 
 if __name__ == "__main__":
-    app = MyApp(0)
-    app.MainLoop()
+    test()
